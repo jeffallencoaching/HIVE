@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Hive</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#141414">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="The Hive">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+  html, body { margin: 0; height: 100%; background: #141414; color: #fff; font-family: -apple-system, "Segoe UI", Arial, sans-serif; }
+  main { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; }
+  form { width: min(340px, 100%); text-align: center; }
+  img { width: 96px; height: 96px; border-radius: 22px; }
+  h1 { font-size: 26px; letter-spacing: 1px; margin: 14px 0 4px; font-weight: 800; }
+  h1 span { color: #F2C230; }
+  p { color: #bdb9ad; font-size: 15px; margin: 0 0 18px; }
+  input { width: 100%; box-sizing: border-box; font-size: 18px; padding: 13px 14px; border-radius: 10px; border: 1.5px solid #555; background: #1f1f1f; color: #fff; }
+  input:focus { outline: 3px solid #F2C230; outline-offset: 1px; }
+  button { width: 100%; margin-top: 10px; font-size: 18px; font-weight: 800; padding: 13px; border-radius: 10px; border: 0; background: #F2C230; color: #141414; cursor: pointer; }
+  button:disabled { opacity: .6; }
+  #m { min-height: 22px; margin-top: 12px; font-weight: 600; color: #ff9b94; font-size: 15px; }
+  #w { display: none; color: #bdb9ad; }
+</style>
+</head>
+<body>
+<main>
+  <div id="w">Opening The Hive…</div>
+  <form id="f" hidden>
+    <img src="icon-192.png" alt="">
+    <h1>THE <span>HIVE</span></h1>
+    <p>Yellowjackets only. Enter the team password.</p>
+    <input type="password" id="p" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Team password" placeholder="Team password" required>
+    <button id="b">Enter</button>
+    <div id="m" role="status"></div>
+  </form>
+</main>
+<script>
+(function () {
+  var SALT = "ljIvIcTv3hT/eigIEYJyZw==", ITER = 250000, K = "hive-key-v1";
+  var f = document.getElementById("f"), m = document.getElementById("m"), w = document.getElementById("w"), b = document.getElementById("b");
+  function b64(bytes) { var s = ""; for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s); }
+  function unb64(s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+  function show(msg) { w.style.display = "none"; f.hidden = false; m.textContent = msg || ""; b.disabled = false; document.getElementById("p").focus(); }
+  if (!window.crypto || !crypto.subtle) { show("This browser can't open The Hive. Use Safari or Chrome."); return; }
+  async function derive(pw) {
+    var base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+    return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: unb64(SALT), iterations: ITER, hash: "SHA-256" }, base, 256));
+  }
+  async function open(raw) {
+    var key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+    var res = await fetch("app.enc", { cache: "no-cache" }); if (!res.ok) throw new Error("net");
+    var buf = new Uint8Array(await res.arrayBuffer());
+    var pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf.slice(0, 12) }, key, buf.slice(12));
+    return new TextDecoder().decode(pt);
+  }
+  function launch(html) { document.open(); document.write(html); document.close(); }
+  var saved = null; try { saved = localStorage.getItem(K); } catch (e) {}
+  if (saved) {
+    w.style.display = "block";
+    open(unb64(saved)).then(launch, function (e) {
+      if (e && e.message === "net") { show("Couldn't reach The Hive. Check your connection and try again."); return; }
+      try { localStorage.removeItem(K); } catch (x) {}
+      show("The team password changed. Enter the new one.");
+    });
+  } else show("");
+  f.addEventListener("submit", async function (e) {
+    e.preventDefault(); b.disabled = true; m.textContent = "Checking…"; m.style.color = "#bdb9ad";
+    try {
+      var raw = await derive(document.getElementById("p").value.trim().toLowerCase());
+      var html = await open(raw);
+      try { localStorage.setItem(K, b64(raw)); } catch (x) {}
+      launch(html);
+    } catch (err) { m.style.color = "#ff9b94"; show(err && err.message === "net" ? "Couldn't reach The Hive. Check your connection." : "That's not the team password."); }
+  });
+})();
+</script>
+</body>
+</html>
